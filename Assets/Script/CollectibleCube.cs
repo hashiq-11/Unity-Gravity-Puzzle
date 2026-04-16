@@ -12,9 +12,10 @@ public class CollectibleCube : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
+        // Standard tag check to make sure only the player can pick this up
         if (other.CompareTag("Player"))
         {
-            // Talk to the Brain
+            // Report the collection to our central manager before we disappear
             if (GameManager.Instance != null)
             {
                 GameManager.Instance.AddCube();
