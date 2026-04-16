@@ -14,8 +14,13 @@ public class CollectibleCube : MonoBehaviour
     {
         if (other.CompareTag("Player"))
         {
-            Debug.Log("Cube Collected!");
+            // Talk to the Brain
+            if (GameManager.Instance != null)
+            {
+                GameManager.Instance.AddCube();
+            }
 
+            Debug.Log("Cube Collected!");
             Destroy(gameObject);
         }
     }
