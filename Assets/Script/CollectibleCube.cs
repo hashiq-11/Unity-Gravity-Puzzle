@@ -12,10 +12,10 @@ public class CollectibleCube : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        // Standard tag check to make sure only the player can pick this up
+        // Security check: Ensure enemies or physics objects can't trigger the collection
         if (other.CompareTag("Player"))
         {
-            // Report the collection to our central manager before we disappear
+            // Report the successful collection to the central Brain before destroying the object
             if (GameManager.Instance != null)
             {
                 GameManager.Instance.AddCube();

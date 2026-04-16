@@ -20,9 +20,33 @@ public class ThirdPersonCamera : MonoBehaviour
     private Vector3 smoothedUp = Vector3.up;
     private float currentDistance;
 
+    private void OnEnable()
+    {
+        // Listen for the Game Over event to freeze the camera
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.OnGameOver += DisableCameraInput;
+        }
+    }
+
+    private void OnDisable()
+    {
+        // Clean up event listeners to prevent memory leaks
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.OnGameOver -= DisableCameraInput;
+        }
+    }
+
+    private void DisableCameraInput(string message, bool isWin)
+    {
+        // Disabling the script stops LateUpdate, freeing the mouse for the UI
+        this.enabled = false;
+    }
+
     void Start()
     {
-        // Lock the mouse for gameplay
+        // Lock the cursor for active gameplay
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
@@ -34,36 +58,48 @@ public class ThirdPersonCamera : MonoBehaviour
     {
         if (!target) return;
 
-        // Gather mouse input for rotating the view
+        // Get raw mouse input and prevent the camera from flipping upside down
         currentYaw += Input.GetAxis("Mouse X") * sensitivity;
         currentPitch -= Input.GetAxis("Mouse Y") * sensitivity;
         currentPitch = Mathf.Clamp(currentPitch, minPitch, maxPitch);
 
-        // This is important: We smoothly transition the camera's "up" vector 
-        // to match the character's new gravity orientation.
+        // Smoothly transition the camera's 'up' direction during gravity shifts
         smoothedUp = Vector3.Slerp(smoothedUp, target.up, 20f * Time.deltaTime).normalized;
 
         Quaternion gravityAlignment = Quaternion.FromToRotation(Vector3.up, smoothedUp);
         Quaternion mouseRotation = Quaternion.Euler(currentPitch, currentYaw, 0);
         Quaternion finalRotation = gravityAlignment * mouseRotation;
 
-        // Offset the camera look-at point so it's around the character's head height
+        // Find the ideal camera position behind the player's head
         Vector3 targetHeadPosition = target.position + (smoothedUp * 1.5f);
         Vector3 directionBackward = finalRotation * Vector3.back;
 
         float targetDistance = maxDistance;
 
-        // Collision check: If a wall is between the player and the camera, 
-        // pull the camera forward to avoid clipping.
+        // Camera Collision: If a wall blocks the view, pull the camera closer
         if (Physics.Linecast(targetHeadPosition, targetHeadPosition + (directionBackward * maxDistance), out RaycastHit hit, collisionLayer))
         {
             targetDistance = hit.distance - 0.15f;
         }
 
-        // Smoothly zoom the camera in or out based on the collision result
+        // Smoothly zoom in/out when hitting walls
         currentDistance = Mathf.Lerp(currentDistance, targetDistance, distanceSmoothSpeed * Time.deltaTime);
 
+        // Apply the final calculations
         transform.position = targetHeadPosition + (directionBackward * currentDistance);
         transform.rotation = finalRotation;
+    }
+
+    public void AlignBehindPlayer()
+    {
+        // 1. Figure out where "forward" is for the player, relative to the current gravity
+        Quaternion gravityAlignment = Quaternion.FromToRotation(Vector3.up, smoothedUp);
+        Vector3 localForward = Quaternion.Inverse(gravityAlignment) * target.forward;
+
+        // 2. Calculate the exact orbital angle (Yaw) needed to put the camera directly behind their back
+        currentYaw = Mathf.Atan2(localForward.x, localForward.z) * Mathf.Rad2Deg;
+
+        // 3. Snap the vertical angle (Pitch) so we are looking slightly down at the player, ready for action!
+        currentPitch = 15f;
     }
 }

@@ -12,6 +12,9 @@ public class GravityController : MonoBehaviour
     public Transform hologramTransform;
     public Transform mainCameraTransform;
 
+    [Tooltip("Adjust this in the Inspector to slide the hologram up or down to fix model pivot offsets.")]
+    public float hologramHeightOffset = 1.0f;
+
     public Vector3 CurrentGravityDir { get; private set; } = Vector3.down;
     private Vector3 targetGravityDir = Vector3.down;
 
@@ -20,13 +23,13 @@ public class GravityController : MonoBehaviour
 
     private void Start()
     {
-        // Hide the "preview" character until the player starts picking a direction
+        // Keep the hologram hidden until the player actively starts picking a new direction
         if (hologramTransform != null) hologramTransform.gameObject.SetActive(false);
     }
 
     private void Update()
     {
-        // Don't let them change gravity while the world is still rotating
+        // Lock player input while the world is spinning to prevent glitchy state changes
         if (isTransitioning) return;
 
         HandleGravitySelection();
@@ -37,7 +40,7 @@ public class GravityController : MonoBehaviour
     {
         Vector3 inputDir = Vector3.zero;
 
-        // Use arrow keys to select which direction gravity should pull
+        // Map arrow keys to camera-relative directions so the controls always feel intuitive
         if (Input.GetKeyDown(KeyCode.UpArrow)) inputDir = mainCameraTransform.forward;
         else if (Input.GetKeyDown(KeyCode.DownArrow)) inputDir = -mainCameraTransform.forward;
         else if (Input.GetKeyDown(KeyCode.LeftArrow)) inputDir = -mainCameraTransform.right;
@@ -45,19 +48,42 @@ public class GravityController : MonoBehaviour
 
         if (inputDir.sqrMagnitude < 0.1f) return;
 
-        // "Snap" the input to the nearest wall/floor axis
+        // Snap the user's camera-relative input to the nearest absolute 3D world axis
         targetGravityDir = GetNearestAxis(inputDir);
         isPreviewing = true;
 
         if (hologramTransform != null)
         {
             hologramTransform.gameObject.SetActive(true);
-            hologramTransform.position = transform.position;
 
-            // Orient the hologram so it's standing "upright" relative to the new gravity
+            // --- Advanced Raycast Positioning ---
+            // We shoot the ray from "chest height" and slightly forward to prevent the ray 
+            // from hitting the floor we are standing on or the player's own collider.
+            Vector3 chestOffset = transform.up * 1.0f;
+            Vector3 forwardOffset = targetGravityDir * 0.8f;
+            Vector3 rayOrigin = transform.position + chestOffset + forwardOffset;
+
+            if (Physics.Raycast(rayOrigin, targetGravityDir, out RaycastHit hit, 50f))
+            {
+                // Place the hologram on the target surface.
+                // We subtract chestOffset to drop the feet to the floor, then add hologramHeightOffset
+                // so the developer can fine-tune the exact placement in the Inspector to avoid clipping.
+                hologramTransform.position = hit.point + (hit.normal * 0.05f) - chestOffset + (transform.up * hologramHeightOffset);
+            }
+            else
+            {
+                // Fallback: If shooting into the void, spawn at player location
+                hologramTransform.position = transform.position;
+            }
+
+            // --- Hologram Orientation ---
+            // Orient the hologram so its "up" completely opposes the new gravity pull
             Vector3 holoUp = -targetGravityDir;
+
+            // Align it to face exactly where the camera is looking
             Vector3 holoForward = Vector3.ProjectOnPlane(mainCameraTransform.forward, holoUp).normalized;
 
+            // Failsafe: Prevent mathematical errors if looking straight up or down
             if (holoForward.sqrMagnitude < 0.1f)
                 holoForward = Vector3.ProjectOnPlane(mainCameraTransform.up, holoUp).normalized;
 
@@ -67,7 +93,7 @@ public class GravityController : MonoBehaviour
 
     private void HandleGravityConfirmation()
     {
-        // Press Enter to commit to the gravity shift
+        // Commit to the shift
         if (isPreviewing && Input.GetKeyDown(KeyCode.Return))
         {
             CurrentGravityDir = targetGravityDir;
@@ -78,7 +104,7 @@ public class GravityController : MonoBehaviour
             StartCoroutine(TransitionGravityRotation());
         }
 
-        // Cancel the preview
+        // Cancel the shift
         if (isPreviewing && Input.GetKeyDown(KeyCode.Escape))
         {
             isPreviewing = false;
@@ -90,8 +116,7 @@ public class GravityController : MonoBehaviour
     {
         isTransitioning = true;
 
-        // Stop the player from moving and pause physics during the shift 
-        // to prevent weird physics collisions or motion sickness.
+        // Temporarily disable physics and movement to ensure a completely smooth rotation
         PlayerMovement pm = GetComponent<PlayerMovement>();
         if (pm != null) pm.enabled = false;
 
@@ -103,6 +128,7 @@ public class GravityController : MonoBehaviour
             rb.isKinematic = true;
         }
 
+        // Calculate the exact rotation needed to stand on the new surface
         Vector3 targetUp = -CurrentGravityDir;
         Vector3 targetForward = Vector3.ProjectOnPlane(mainCameraTransform.forward, targetUp).normalized;
 
@@ -112,11 +138,11 @@ public class GravityController : MonoBehaviour
         Quaternion targetRotation = Quaternion.LookRotation(targetForward, targetUp);
         float timeOut = 0f;
 
-        // Smoothly rotate the player to their new "up" orientation
+        // Smoothly interpolate the rotation (with a 2-second safety timeout to prevent soft-locks)
         while (Quaternion.Angle(transform.rotation, targetRotation) > 0.1f)
         {
             timeOut += Time.fixedDeltaTime;
-            if (timeOut > 2.0f) break; // Safety timeout
+            if (timeOut > 2.0f) break;
 
             transform.rotation = Quaternion.RotateTowards(
                 transform.rotation,
@@ -127,9 +153,19 @@ public class GravityController : MonoBehaviour
             yield return new WaitForFixedUpdate();
         }
 
+        // Snap to the exact final rotation for mathematical precision
         transform.rotation = targetRotation;
 
-        // Re-enable physics and movement now that we're landed
+        // --- UX Polish: Camera Auto-Alignment ---
+        // Automatically swing the camera directly behind the player's back so they don't 
+        // have to manually readjust their mouse after every gravity shift.
+        ThirdPersonCamera cam = mainCameraTransform.GetComponent<ThirdPersonCamera>();
+        if (cam != null)
+        {
+            cam.AlignBehindPlayer();
+        }
+
+        // Restore physics control
         if (rb != null) rb.isKinematic = false;
         if (pm != null) pm.enabled = true;
 
@@ -138,12 +174,12 @@ public class GravityController : MonoBehaviour
 
     private Vector3 GetNearestAxis(Vector3 dir)
     {
-        // Helper to find which world axis (X, Y, or Z) our input is closest to
         Vector3 nearest = Vector3.zero;
         float maxDot = -1f;
 
         Vector3[] axes = { Vector3.up, Vector3.down, Vector3.left, Vector3.right, Vector3.forward, Vector3.back };
 
+        // Use the Dot Product to mathematically find which absolute world axis perfectly matches the input
         foreach (Vector3 axis in axes)
         {
             float dot = Vector3.Dot(dir.normalized, axis);
