@@ -22,26 +22,22 @@ public class UIManager : MonoBehaviour
         // Hook up the button via code to avoid losing references in the Inspector
         if (restartButton != null) restartButton.onClick.AddListener(OnRestartClicked);
 
-        // Subscribe to the GameManager here to ensure it exists first (prevents race conditions)
+        // Subscribe to the GameManager here to ensure it exists first
         if (GameManager.Instance != null)
         {
             GameManager.Instance.OnScoreChanged += UpdateScoreUI;
             GameManager.Instance.OnTimeChanged += UpdateTimerUI;
             GameManager.Instance.OnGameOver += ShowEndScreen;
 
-            // Find all cubes at launch so the UI doesn't start blank
+            // Update UI immediately with total count
             int total = FindObjectsByType<CollectibleCube>(FindObjectsSortMode.None).Length;
             UpdateScoreUI(0, total);
-        }
-        else
-        {
-            Debug.LogError("UIManager cannot find the GameManager!");
         }
     }
 
     private void OnDestroy()
     {
-        // Always clean up event listeners when reloading scenes to prevent memory leaks
+        // Always clean up event listeners to prevent memory leaks
         if (GameManager.Instance != null)
         {
             GameManager.Instance.OnScoreChanged -= UpdateScoreUI;

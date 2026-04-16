@@ -21,7 +21,9 @@ public class PlayerMovement : MonoBehaviour
     private Rigidbody rb;
     private GravityController gravityController;
     private Vector3 moveInput;
-    private bool isGrounded;
+
+    // Default to true to prevent the falling animation from playing on frame 1
+    private bool isGrounded = true;
     private float currentAirTime = 0f;
 
     public Animator playerAnimator;
@@ -33,6 +35,13 @@ public class PlayerMovement : MonoBehaviour
 
         // Disable standard Unity gravity since the GravityController handles it dynamically
         rb.useGravity = false;
+    }
+
+    private void Start()
+    {
+        // This prevents the "falling flicker" before the first Update loop runs.
+        CheckGrounded();
+        UpdateAnimations();
     }
 
     private void Update()
@@ -105,7 +114,10 @@ public class PlayerMovement : MonoBehaviour
     {
         // Cast a ray strictly downwards relative to the player's current orientation
         Vector3 origin = transform.position + (transform.up * 0.1f);
-        isGrounded = Physics.Raycast(origin, -transform.up, groundCheckDistance + 0.1f, groundLayer);
+
+        // SENIOR TIP: We add a tiny extra buffer (0.1f) during the raycast to handle 
+        // minor physics jitter or uneven terrain.
+        isGrounded = Physics.Raycast(origin, -transform.up, groundCheckDistance + 0.15f, groundLayer);
 
         if (!isGrounded)
         {
@@ -131,6 +143,7 @@ public class PlayerMovement : MonoBehaviour
     {
         if (playerAnimator != null)
         {
+            // Sync current physics state with the Animator Controller
             playerAnimator.SetFloat("Speed", moveInput.magnitude);
             playerAnimator.SetBool("isGrounded", isGrounded);
         }

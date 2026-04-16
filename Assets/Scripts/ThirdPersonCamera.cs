@@ -20,16 +20,23 @@ public class ThirdPersonCamera : MonoBehaviour
     private Vector3 smoothedUp = Vector3.up;
     private float currentDistance;
 
-    private void OnEnable()
+    private void Start()
     {
-        // Listen for the Game Over event to freeze the camera
+        // Lock the cursor for active gameplay
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+
+        // Hook into the Game Over event to freeze camera rotation
         if (GameManager.Instance != null)
         {
             GameManager.Instance.OnGameOver += DisableCameraInput;
         }
+
+        if (target != null) smoothedUp = target.up;
+        currentDistance = maxDistance;
     }
 
-    private void OnDisable()
+    private void OnDestroy()
     {
         // Clean up event listeners to prevent memory leaks
         if (GameManager.Instance != null)
@@ -42,21 +49,18 @@ public class ThirdPersonCamera : MonoBehaviour
     {
         // Disabling the script stops LateUpdate, freeing the mouse for the UI
         this.enabled = false;
-    }
 
-    void Start()
-    {
-        // Lock the cursor for active gameplay
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
-
-        if (target != null) smoothedUp = target.up;
-        currentDistance = maxDistance;
+        // Final safety check to ensure the cursor is released
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
 
     void LateUpdate()
     {
         if (!target) return;
+
+        // We return early to ignore all mouse movement and math calculations.
+        if (Time.timeScale == 0) return;
 
         // Get raw mouse input and prevent the camera from flipping upside down
         currentYaw += Input.GetAxis("Mouse X") * sensitivity;
@@ -99,7 +103,7 @@ public class ThirdPersonCamera : MonoBehaviour
         // 2. Calculate the exact orbital angle (Yaw) needed to put the camera directly behind their back
         currentYaw = Mathf.Atan2(localForward.x, localForward.z) * Mathf.Rad2Deg;
 
-        // 3. Snap the vertical angle (Pitch) so we are looking slightly down at the player, ready for action!
+        // 3. Snap the vertical angle (Pitch) so we are looking slightly down at the player
         currentPitch = 15f;
     }
 }
